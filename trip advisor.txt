@@ -1,0 +1,106 @@
+trigger FoodOptionTrigger on Food_Option__c (after insert, after update, after delete) {
+
+    if (trigger.isInsert && trigger.isAfter) {
+        FoodOptionTriggerHandler.updateHotelInformation(trigger.new);
+    }
+
+}
+-------------------------------------------------------------------------------------------
+@isTest
+private class TestFoodOptionTrigger {
+@isTest static void testFoodOptionTrigger() {
+// Create a Hotel record for reference
+Hotel__c hotel = new Hotel__c(Name = 'Test Hotel');
+insert hotel;
+// Create a Food Option record linked to the Hotel
+Food_Option__c foodOption1 = new Food_Option__c(Hotel__c = hotel.Id);
+insert foodOption1;
+// Verify if Hotel's TotalFoodOptions__c is updated correctly
+Hotel__c updatedHotel = [SELECT TotalFoodOptions__c FROM Hotel__c WHERE Id = :hotel.Id];
+System.assertEquals(1, updatedHotel.TotalFoodOptions__c, 'TotalFoodOptions__c should be updated to 1');
+// Create another Food Option and check the count again
+Food_Option__c foodOption2 = new Food_Option__c(Hotel__c = hotel.Id);
+insert foodOption2;
+updatedHotel = [SELECT TotalFoodOptions__c FROM Hotel__c WHERE Id = :hotel.Id];
+System.assertEquals(2, updatedHotel.TotalFoodOptions__c, 'TotalFoodOptions__c should be updated to 2');
+}
+}
+
+------------------------------------------------------------------------------------------------------------
+public class FoodOptionTriggerHandler {
+
+    public static void updateHotelInformation(List<Food_Option__c> newFoodOptions) {
+        Set<Id> hotelIdsToUpdate = new Set<Id>();
+
+        // Collect unique Hotel Ids affected by food options changes
+        for (Food_Option__c foodOption : newFoodOptions) {
+            hotelIdsToUpdate.add(foodOption.Hotel__c);
+        }
+
+        // Update hotel information based on food options
+        List<Hotel__c> hotelsToUpdate = [SELECT Id, Name, TotalFoodOptions__c FROM Hotel__c WHERE Id IN :hotelIdsToUpdate];
+
+        for (Hotel__c hotel : hotelsToUpdate) {
+            // Recalculate total food options count
+            Integer totalFoodOptions = [SELECT COUNT() FROM Food_Option__c WHERE Hotel__c = :hotel.Id];
+            hotel.TotalFoodOptions__c = totalFoodOptions;
+        }
+
+        // Update hotels with new total food options count
+        update hotelsToUpdate;
+    }
+}
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+public class FlightReminderScheduledJob implements Schedulable {
+
+
+    public void execute(SchedulableContext sc) {
+
+        sendFlightReminders();
+
+    }
+
+
+    private void sendFlightReminders() {
+
+        // Query for flights departing within the next 24 hours
+
+        List<Flight__c> upcomingFlights = [SELECT Id, Name, DepartureDateTime__c FROM Flight__c
+
+                                           WHERE DepartureDateTime__c >= :DateTime.now()
+
+                                           AND DepartureDateTime__c <= :DateTime.now().addDays(1)];
+
+
+        for (Flight__c flight : upcomingFlights) {
+
+            // Customize the logic to send reminder emails
+
+            // For this example, we'll print a log message; replace this with your email sending logic.
+
+            System.debug('Sending reminder email for Flight ' + flight.Name + ' to ' + flight.ContactEmail__c);
+
+
+            // Example: Send email using Messaging.SingleEmailMessage
+
+            Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+
+            email.setToAddresses(new List<String>{ flight.ContactEmail__c });
+
+            email.setSubject('Flight Reminder: ' + flight.Name);
+
+            email.setPlainTextBody('This is a reminder for your upcoming flight ' + flight.Name +
+
+                                   ' departing on ' + flight.DepartureDateTime__c);
+
+            Messaging.sendEmail(new List<Messaging.SingleEmailMessage>{ email });
+
+        }
+
+    }
+
+}
